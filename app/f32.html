@@ -1,0 +1,365 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tiny LLM</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+body{font:16px/1.4 -apple-system,Helvetica,sans-serif;margin:0;padding:12px;background:#111;color:#eee}
+textarea,input{width:100%;box-sizing:border-box;font:16px Helvetica,sans-serif;background:#222;color:#eee;border:1px solid #444;border-radius:6px;padding:8px}
+button{font:16px Helvetica,sans-serif;padding:10px 16px;margin:8px 8px 8px 0;border:0;border-radius:6px;background:#2a7;color:#fff}
+button:disabled{background:#444}
+#out{white-space:pre-wrap;min-height:120px;margin-top:8px}
+#st{color:#999;font-size:13px;margin-bottom:8px}
+#tps{font-size:28px;font-weight:bold;color:#2a7}
+</style>
+</head>
+<body>
+<h3>Tiny LLM (stories15M, runs on this phone)</h3>
+<div id="st">Loading...</div>
+<textarea id="p" rows="2">Once upon a time</textarea>
+Temperature (0 = greedy)
+<input id="t" type="number" step="0.1" min="0" value="0.8">
+<button id="go" disabled>Generate</button><button id="stop" disabled>Stop</button>
+<div id="tps"></div>
+<div id="out"></div>
+<script>
+// llama2.c (karpathy) float32 checkpoint, ported to plain ES5 for iOS 10 Safari.
+var $ = function (id) { return document.getElementById(id); };
+var st = $('st'), out = $('out'), goBtn = $('go'), stopBtn = $('stop');
+var M, W, tok;
+
+function load(url, cb) {
+  var x = new XMLHttpRequest();
+  x.open('GET', url);
+  x.responseType = 'arraybuffer';
+  x.onprogress = function (e) {
+    if (e.lengthComputable) st.textContent = 'Loading ' + url + ' ' + Math.round(100 * e.loaded / e.total) + '%';
+  };
+  x.onload = function () {
+    if (x.status === 200) cb(x.response); else st.textContent = 'Failed: ' + url + ' (' + x.status + ')';
+  };
+  x.onerror = function () { st.textContent = 'Failed: ' + url; };
+  x.send();
+}
+
+function parseModel(buf) {
+  var h = new Int32Array(buf, 0, 7);
+  var p = { dim: h[0], hid: h[1], nl: h[2], nh: h[3], nkv: h[4], vocab: Math.abs(h[5]), seq: h[6] };
+  var shared = h[5] > 0;
+  p.hs = p.dim / p.nh;
+  p.kvd = p.dim * p.nkv / p.nh;
+  p.kvmul = p.nh / p.nkv;
+  var off = 28;
+  function take(n) { var a = new Float32Array(buf, off, n); off += n * 4; return a; }
+  var w = {};
+  w.emb = take(p.vocab * p.dim);
+  w.rmsAtt = take(p.nl * p.dim);
+  w.wq = take(p.nl * p.dim * p.dim);
+  w.wk = take(p.nl * p.dim * p.kvd);
+  w.wv = take(p.nl * p.dim * p.kvd);
+  w.wo = take(p.nl * p.dim * p.dim);
+  w.rmsFfn = take(p.nl * p.dim);
+  w.w1 = take(p.nl * p.hid * p.dim);
+  w.w2 = take(p.nl * p.dim * p.hid);
+  w.w3 = take(p.nl * p.hid * p.dim);
+  w.rmsFinal = take(p.dim);
+  off += p.seq * p.hs / 2 * 4 * 2; // skip the old freq_cis_real/imag tables
+  w.cls = shared ? w.emb : take(p.vocab * p.dim);
+  M = p; W = w;
+}
+
+// Pieces are kept as latin1 strings (one char per byte) so UTF-8 bytes stay intact.
+function parseTok(buf, vocab) {
+  var dv = new DataView(buf), u8 = new Uint8Array(buf), off = 4; // first int = max token length
+  tok = { s: [], sc: new Float32Array(vocab), map: Object.create(null) };
+  for (var i = 0; i < vocab; i++) {
+    tok.sc[i] = dv.getFloat32(off, true);
+    var len = dv.getInt32(off + 4, true);
+    off += 8;
+    var s = '';
+    for (var j = 0; j < len; j++) s += String.fromCharCode(u8[off + j]);
+    off += len;
+    tok.s.push(s);
+    tok.map[s] = i;
+  }
+}
+
+function encode(text) {
+  var s = unescape(encodeURIComponent(text)), ids = [1], buf = '', i, k;
+  if (s.length) ids.push(tok.map[' ']);
+  for (i = 0; i < s.length; i++) {
+    if ((s.charCodeAt(i) & 0xC0) !== 0x80) buf = '';
+    buf += s.charAt(i);
+    if ((s.charCodeAt(i + 1) & 0xC0) === 0x80 && buf.length < 4) continue;
+    var id = tok.map[buf];
+    if (id !== undefined) ids.push(id);
+    else for (k = 0; k < buf.length; k++) ids.push(buf.charCodeAt(k) + 3);
+    buf = '';
+  }
+  for (;;) {
+    var best = -1e10, bi = -1, bid = -1;
+    for (i = 0; i < ids.length - 1; i++) {
+      var m = tok.map[tok.s[ids[i]] + tok.s[ids[i + 1]]];
+      if (m !== undefined && tok.sc[m] > best) { best = tok.sc[m]; bi = i; bid = m; }
+    }
+    if (bi < 0) break;
+    ids.splice(bi, 2, bid);
+  }
+  return ids;
+}
+
+function piece(prev, t) {
+  var s = tok.s[t];
+  if (prev === 1 && s.charAt(0) === ' ') s = s.slice(1);
+  var m = /^<0x([0-9A-F]{2})>$/.exec(s);
+  return m ? String.fromCharCode(parseInt(m[1], 16)) : s;
+}
+
+function rmsnorm(o, x, w, wo, n) {
+  var ss = 0, j;
+  for (j = 0; j < n; j++) ss += x[j] * x[j];
+  ss = 1 / Math.sqrt(ss / n + 1e-5);
+  for (j = 0; j < n; j++) o[j] = w[wo + j] * (ss * x[j]);
+}
+
+function softmax(a, off, n) {
+  var mx = a[off], sum = 0, i;
+  for (i = 1; i < n; i++) if (a[off + i] > mx) mx = a[off + i];
+  for (i = 0; i < n; i++) { a[off + i] = Math.exp(a[off + i] - mx); sum += a[off + i]; }
+  for (i = 0; i < n; i++) a[off + i] /= sum;
+}
+
+// o[i] = sum_j w[wo + i*n + j] * x[j]   (w is d rows by n columns)
+// Rows r0..r1 of the product, with explicit offsets so a worker can share the code.
+// Unrolled by 8 with separate accumulators; the tail loop covers n not divisible by 8.
+function mmRows(o, oo, x, xo, w, wo, n, r0, r1) {
+  var n8 = n - (n % 8);
+  for (var i = r0; i < r1; i++) {
+    var b = wo + i * n, s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0, s7 = 0, j;
+    for (j = 0; j < n8; j += 8) {
+      s0 += w[b + j] * x[xo + j];
+      s1 += w[b + j + 1] * x[xo + j + 1];
+      s2 += w[b + j + 2] * x[xo + j + 2];
+      s3 += w[b + j + 3] * x[xo + j + 3];
+      s4 += w[b + j + 4] * x[xo + j + 4];
+      s5 += w[b + j + 5] * x[xo + j + 5];
+      s6 += w[b + j + 6] * x[xo + j + 6];
+      s7 += w[b + j + 7] * x[xo + j + 7];
+    }
+    for (; j < n; j++) s0 += w[b + j] * x[xo + j];
+    o[oo + i] = s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7;
+  }
+}
+
+// Second thread: waits on ctrl[0], does rows ctrl[6]..ctrl[7], then raises ctrl[1].
+function workerMain() {
+  var F, G, c;
+  onmessage = function (e) {
+    F = new Float32Array(e.data.model);
+    G = new Float32Array(e.data.state);
+    c = new Int32Array(e.data.ctrl);
+    postMessage('ready');
+    for (;;) {
+      var spins = 0;
+      while (Atomics.load(c, 0) !== 1) {
+        if (++spins > 20000) { Atomics.wait(c, 0, 0, 50); spins = 0; }
+      }
+      mmRows(G, c[2], G, c[3], F, c[4], c[5], c[6], c[7]);
+      Atomics.store(c, 0, 0);
+      Atomics.store(c, 1, 1);
+    }
+  };
+}
+
+var par = false, F, G, ctrl, wake;
+function matmul(o, x, w, wo, n, d) {
+  if (!par || d < 256) return mmRows(o, 0, x, 0, w, wo, n, 0, d);
+  var h = d >> 1;
+  ctrl[2] = o.byteOffset >> 2; ctrl[3] = x.byteOffset >> 2; ctrl[4] = (w.byteOffset >> 2) + wo;
+  ctrl[5] = n; ctrl[6] = h; ctrl[7] = d;
+  Atomics.store(ctrl, 1, 0);
+  Atomics.store(ctrl, 0, 1);
+  wake(ctrl, 0, 1);
+  mmRows(G, ctrl[2], G, ctrl[3], F, ctrl[4], n, 0, h);
+  for (var spins = 0; Atomics.load(ctrl, 1) !== 1; spins++) {
+    if (spins > 3e7) { // worker looks dead: finish its half here and stay single-threaded
+      par = false;
+      mmRows(G, ctrl[2], G, ctrl[3], F, ctrl[4], n, h, d);
+      break;
+    }
+  }
+}
+
+// The vectors that matmul reads and writes live in one buffer (shared when threading is available).
+var V;
+function initVecs(shared) {
+  var p = M, sizes = { x: p.dim, xb: p.dim, xb2: p.dim, hb: p.hid, hb2: p.hid, q: p.dim, k: p.kvd, v: p.kvd, logits: p.vocab };
+  var total = 0, off = 0, key;
+  for (key in sizes) total += sizes[key];
+  V = { buf: shared ? new SharedArrayBuffer(total * 4) : new ArrayBuffer(total * 4) };
+  for (key in sizes) { V[key] = new Float32Array(V.buf, off * 4, sizes[key]); off += sizes[key]; }
+}
+
+function newState() {
+  var p = M;
+  return {
+    x: V.x, xb: V.xb, xb2: V.xb2, hb: V.hb, hb2: V.hb2, q: V.q, k: V.k, v: V.v, logits: V.logits,
+    att: new Float32Array(p.nh * p.seq),
+    kc: new Float32Array(p.nl * p.seq * p.kvd), vc: new Float32Array(p.nl * p.seq * p.kvd),
+    cs: new Float32Array(p.dim / 2), sn: new Float32Array(p.dim / 2)
+  };
+}
+
+function forward(s, token, pos) {
+  var p = M, w = W, dim = p.dim, hid = p.hid, hs = p.hs, kvd = p.kvd, i, j, l, h, t;
+  s.x.set(w.emb.subarray(token * dim, (token + 1) * dim));
+  for (i = 0; i < dim; i += 2) {
+    var a = pos / Math.pow(10000, (i % hs) / hs);
+    s.cs[i / 2] = Math.cos(a); s.sn[i / 2] = Math.sin(a);
+  }
+  for (l = 0; l < p.nl; l++) {
+    rmsnorm(s.xb, s.x, w.rmsAtt, l * dim, dim);
+    matmul(s.q, s.xb, w.wq, l * dim * dim, dim, dim);
+    matmul(s.k, s.xb, w.wk, l * dim * kvd, dim, kvd);
+    matmul(s.v, s.xb, w.wv, l * dim * kvd, dim, kvd);
+    for (i = 0; i < dim; i += 2) {
+      var c = s.cs[i / 2], sn = s.sn[i / 2], v0 = s.q[i], v1 = s.q[i + 1];
+      s.q[i] = v0 * c - v1 * sn; s.q[i + 1] = v0 * sn + v1 * c;
+      if (i < kvd) {
+        v0 = s.k[i]; v1 = s.k[i + 1];
+        s.k[i] = v0 * c - v1 * sn; s.k[i + 1] = v0 * sn + v1 * c;
+      }
+    }
+    var loff = l * p.seq * kvd;
+    s.kc.set(s.k, loff + pos * kvd);
+    s.vc.set(s.v, loff + pos * kvd);
+    for (h = 0; h < p.nh; h++) {
+      var qo = h * hs, ao = h * p.seq, ko = Math.floor(h / p.kvmul) * hs;
+      for (t = 0; t <= pos; t++) {
+        var sc = 0, kb = loff + t * kvd + ko;
+        for (j = 0; j < hs; j++) sc += s.q[qo + j] * s.kc[kb + j];
+        s.att[ao + t] = sc / Math.sqrt(hs);
+      }
+      softmax(s.att, ao, pos + 1);
+      for (j = 0; j < hs; j++) s.xb[qo + j] = 0;
+      for (t = 0; t <= pos; t++) {
+        var at = s.att[ao + t], vb = loff + t * kvd + ko;
+        for (j = 0; j < hs; j++) s.xb[qo + j] += at * s.vc[vb + j];
+      }
+    }
+    matmul(s.xb2, s.xb, w.wo, l * dim * dim, dim, dim);
+    for (i = 0; i < dim; i++) s.x[i] += s.xb2[i];
+    rmsnorm(s.xb, s.x, w.rmsFfn, l * dim, dim);
+    matmul(s.hb, s.xb, w.w1, l * dim * hid, dim, hid);
+    matmul(s.hb2, s.xb, w.w3, l * dim * hid, dim, hid);
+    for (i = 0; i < hid; i++) { var u = s.hb[i]; s.hb[i] = u / (1 + Math.exp(-u)) * s.hb2[i]; }
+    matmul(s.xb2, s.hb, w.w2, l * dim * hid, hid, dim);
+    for (i = 0; i < dim; i++) s.x[i] += s.xb2[i];
+  }
+  rmsnorm(s.x, s.x, w.rmsFinal, 0, dim);
+  matmul(s.logits, s.x, w.cls, 0, dim, p.vocab);
+}
+
+function sample(l, temp, topp) {
+  var n = l.length, i;
+  if (temp <= 0) {
+    var m = 0;
+    for (i = 1; i < n; i++) if (l[i] > l[m]) m = i;
+    return m;
+  }
+  for (i = 0; i < n; i++) l[i] /= temp;
+  softmax(l, 0, n);
+  var cut = (1 - topp) / (n - 1), cand = [];
+  for (i = 0; i < n; i++) if (l[i] >= cut) cand.push(i);
+  cand.sort(function (a, b) { return l[b] - l[a]; });
+  var cum = 0, last = cand.length - 1;
+  for (i = 0; i < cand.length; i++) {
+    cum += l[cand[i]];
+    if (cum > topp) { last = i; break; }
+  }
+  var r = Math.random() * cum, c = 0;
+  for (i = 0; i <= last; i++) { c += l[cand[i]]; if (r < c) return cand[i]; }
+  return cand[last];
+}
+
+var running = false;
+function show(raw) {
+  try { out.textContent = decodeURIComponent(escape(raw)); } catch (e) { out.textContent = raw; }
+}
+
+function generate() {
+  var prompt = encode($('p').value), temp = parseFloat($('t').value) || 0;
+  var s = newState(), steps = M.seq, pos = 0, token = prompt[0], raw = '', t0 = Date.now();
+  running = true; goBtn.disabled = true; stopBtn.disabled = false; out.textContent = '';
+  function stats() {
+    var r = pos / ((Date.now() - t0) / 1000);
+    st.textContent = pos + ' tokens';
+    $('tps').textContent = r.toFixed(2) + ' tok/s';
+  }
+  function done() {
+    running = false; goBtn.disabled = false; stopBtn.disabled = true;
+    stats();
+  }
+  function step() {
+    if (!running || pos >= steps) return done();
+    forward(s, token, pos);
+    var next = pos < prompt.length - 1 ? prompt[pos + 1] : sample(s.logits, temp, 0.9);
+    pos++;
+    if (next === 1) return done();
+    raw += piece(token, next);
+    token = next;
+    show(raw);
+    stats();
+    setTimeout(step, 0);
+  }
+  step();
+}
+
+goBtn.onclick = generate;
+stopBtn.onclick = function () { running = false; };
+
+var single = /[?&]single/.test(location.search);
+var canShare = !single && typeof SharedArrayBuffer !== 'undefined' && typeof Atomics !== 'undefined' && typeof Worker !== 'undefined';
+var mode = single ? '1 thread (forced)' : '1 thread (no shared memory)';
+
+function ready() {
+  st.textContent = 'Ready: ' + M.nl + ' layers, dim ' + M.dim + ', ' + mode;
+}
+
+function startWorker(modelBuf) {
+  try {
+    F = new Float32Array(modelBuf);
+    G = new Float32Array(V.buf);
+    ctrl = new Int32Array(new SharedArrayBuffer(32));
+    wake = Atomics.notify || Atomics.wake; // older Safari only has the old name
+    var src = mmRows.toString() + '\n(' + workerMain.toString() + ')();';
+    var wk = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    wk.onmessage = function () { par = true; mode = '2 threads'; if (!running) ready(); };
+    wk.onerror = function () { par = false; mode = '1 thread (worker failed)'; if (!running) ready(); };
+    wk.postMessage({ model: modelBuf, state: V.buf, ctrl: ctrl.buffer });
+    mode = '1 thread (starting worker)';
+  } catch (e) {
+    mode = '1 thread (no worker)';
+  }
+}
+
+load('/models/stories15M.bin', function (mb) {
+  var buf = mb;
+  if (canShare) {
+    buf = new SharedArrayBuffer(mb.byteLength);
+    new Uint8Array(buf).set(new Uint8Array(mb));
+  }
+  parseModel(buf);
+  initVecs(canShare);
+  load('/models/tokenizer.bin', function (tb) {
+    parseTok(tb, M.vocab);
+    if (canShare) startWorker(buf);
+    ready();
+    goBtn.disabled = false;
+  });
+});
+</script>
+</body>
+</html>

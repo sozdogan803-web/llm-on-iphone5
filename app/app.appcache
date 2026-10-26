@@ -1,0 +1,10 @@
+CACHE MANIFEST
+# v3(change this number whenever index.html or the model changes, or the phone keeps the old copy)
+
+CACHE:
+/
+/models/stories15M.q8
+/models/tokenizer.bin
+
+NETWORK:
+*

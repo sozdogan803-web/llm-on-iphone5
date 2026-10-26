@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en" manifest="app.appcache"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="stories15M">
+<title>stories15M</title>
+<style>
+:root {
+  --bg: #1b1b1b; --panel: #212121; --line: #2e2e2e; --bubble: #363636; --text: #e6e6e6; --dim: #9b9b9b;
+  --accent: #4b45d6; --send: #5a4fe3; --chip: #2a2a2a;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 14px/1.5 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; overflow: hidden; }
+#app { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
+svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+#top { display: flex; align-items: center; height: 44px; padding: 0 8px; border-bottom: 1px solid var(--line); flex: none; }
+.ib { width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--dim); padding: 7px; }
+.ib:active { background: var(--chip); }
+#pill { flex: 1; margin: 0 6px; height: 28px; border-radius: 7px; background: var(--accent); color: #dcdcff; font: 12px/28px Menlo, Consolas, monospace;
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
+#pill i { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: #aaa; margin-right: 6px; vertical-align: 1px; }
+#pill.on i { background: #7dffa0; }
+
+#scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 12px 8px; }
+#empty { color: var(--dim); text-align: center; margin-top: 40px; font-size: 13px; padding: 0 20px; }
+.user { display: flex; justify-content: flex-end; margin: 6px 0 18px; }
+.user div { max-width: 86%; background: var(--bubble); border-radius: 14px; padding: 9px 13px; white-space: pre-wrap; word-wrap: break-word; }
+.asst { margin: 0 0 18px; }
+.mname { font: 11px Menlo, Consolas, monospace; color: #cfcfcf; margin-bottom: 6px; }
+.body { white-space: pre-wrap; word-wrap: break-word; }
+.stats { margin-top: 8px; }
+.chip { display: inline-block; font-size: 11px; color: #c4c4c4; background: var(--chip); border-radius: 6px; padding: 1px 7px; margin: 0 5px 5px 0; }
+.chip svg { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 3px; }
+
+#bar { flex: none; padding: 6px 10px 10px; }
+#box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 8px 10px 8px 12px; }
+#inp { width: 100%; background: none; border: 0; outline: 0; resize: none; color: var(--text); font: 16px/1.4 inherit; font-family: inherit;
+  height: 24px; max-height: 120px; display: block; padding: 0; }
+#inp::placeholder { color: #727272; }
+#row { display: flex; align-items: center; margin-top: 6px; }
+#row .sp { flex: 1; }
+#ctx { display: flex; align-items: center; color: var(--dim); font-size: 11px; margin-right: 10px; }
+#ctx svg { width: 18px; height: 18px; margin-right: 4px; transform: rotate(-90deg); }
+#send { width: 32px; height: 32px; border-radius: 16px; border: 0; background: var(--send); color: #fff; padding: 7px; }
+#send:disabled { background: #3a3a3a; color: #777; }
+
+.drawer { position: fixed; top: 0; bottom: 0; width: 280px; background: #202020; z-index: 5; padding: 12px;
+  transition: transform .22s; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#left { left: 0; border-right: 1px solid var(--line); transform: translateX(-290px); }
+#right { right: 0; border-left: 1px solid var(--line); transform: translateX(290px); }
+.open { transform: none !important; }
+#veil { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.5); z-index: 4; display: none; }
+.dh { display: flex; align-items: center; font-weight: 600; margin-bottom: 12px; }
+.dh span { flex: 1; }
+.item { display: flex; background: #3a3a3a; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+.item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item em { font-style: normal; color: var(--dim); font-size: 11px; margin-left: 8px; line-height: 20px; }
+.sec { font-weight: 600; font-size: 13px; margin: 18px 0 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.sec:first-of-type { border-top: 0; padding-top: 0; margin-top: 4px; }
+.lab { display: flex; font-size: 12px; color: #bdbdbd; margin-top: 12px; }
+.lab span { flex: 1; } .lab b { font-weight: 500; background: var(--chip); border-radius: 5px; padding: 0 8px; color: var(--text); }
+input[type=range] { width: 100%; margin: 8px 0 0; }
+#sys { width: 100%; height: 90px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  font: 13px/1.4 inherit; font-family: inherit; resize: none; outline: 0; }
+.note { font-size: 11px; color: var(--dim); margin-top: 6px; }
+#starts { text-align: center; padding: 14px 8px 0; }
+.st { display: inline-block; margin: 4px; padding: 7px 13px; border: 0; border-radius: 14px; background: var(--bubble); color: var(--text); font: 13px/1.3 inherit; font-family: inherit; }
+.st:active { background: var(--accent); }
+</style></head>
+<body>
+<div id="app">
+  <div id="top">
+    <button class="ib" id="menu" aria-label="Chats"><svg viewBox="0 0 18 18"><path d="M2 4.5h14M2 9h14M2 13.5h14"/></svg></button>
+    <div id="pill"><i></i><span id="pt">Loading…</span></div>
+    <button class="ib" id="cfg" aria-label="Settings"><svg viewBox="0 0 18 18"><path d="M2 5h8M14 5h2M2 13h2M8 13h8"/><circle cx="12" cy="5" r="2"/><circle cx="6" cy="13" r="2"/></svg></button>
+  </div>
+  <div id="scroll"><div id="empty">Loading the model…</div><div id="starts"></div><div id="msgs"></div></div>
+  <div id="bar"><div id="box">
+    <textarea id="inp" rows="1" placeholder="Send a message to the model..."></textarea>
+    <div id="row"><div class="sp"></div>
+      <div id="ctx"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#3d3d3d" stroke-width="3"/><circle id="ring" cx="12" cy="12" r="10" stroke="#8f88ff" stroke-width="3" stroke-dasharray="0 62.8"/></svg><span id="pct">0%</span></div>
+      <button id="send" disabled aria-label="Send"></button>
+    </div>
+  </div></div>
+</div>
+
+<div id="veil"></div>
+<div class="drawer" id="left">
+  <div class="dh"><span>Chats</span><button class="ib" id="new" aria-label="New chat"><svg viewBox="0 0 18 18"><path d="M3 15l1-4 8-8 3 3-8 8zM11 4l3 3"/></svg></button></div>
+  <div class="item"><span id="ctitle">Unnamed Chat</span><em id="ctok">0 tokens</em></div>
+</div>
+<div class="drawer" id="right">
+  <div class="dh"><span>Model Parameters</span></div>
+  <div class="sec">System Prompt</div>
+  <textarea id="sys" placeholder="Added in front of your first message"></textarea>
+  <div class="note">stories15M is a base model, not a chat model: it continues the text you give it.</div>
+  <div class="sec">Sampling</div>
+  <div class="lab"><span>Temperature</span><b id="tv">0.8</b></div><input type="range" id="tr" min="0" max="2" step="0.05" value="0.8">
+  <div class="lab"><span>Top P Sampling</span><b id="pv">0.95</b></div><input type="range" id="pr" min="0.05" max="1" step="0.05" value="0.95">
+  <div class="lab"><span>Limit Response Length</span><b id="mv">256</b></div><input type="range" id="mr" min="8" max="256" step="8" value="256">
+  <div class="sec">Runtime</div>
+  <div class="note" id="rt">Loading…</div>
+  <div class="note" id="pf"></div>
+  <div class="note" id="oc"></div>
+</div>
+
+<script>
+// llama2.c (karpathy) model, int8-quantised (tools/quantize.py), ES5 for iOS 10 Safari.
+var $ = function (id) { return document.getElementById(id); };
+var M, W, tok, B, B4, S, G, V, Q, XQ, XQ4, XS;
+var par = false, ctrl, wake, nj = 0;
+var hr = window.performance && performance.now ? function () { return performance.now(); } : Date.now;
+var T = { tot: 0, mm: 0, wait: 0, att: 0, n: 0 }; // ms per section of forward(), shown in the drawer
+var GS = 32;
+
+function load(url, cb, fail) {
+  var x = new XMLHttpRequest();
+  x.open('GET', url);
+  x.responseType = 'arraybuffer';
+  x.onprogress = function (e) {
+    if (e.lengthComputable) $('pt').textContent = 'Loading ' + Math.round(100 * e.loaded / e.total) + '%';
+  };
+  x.onload = function () { if (x.status === 200) cb(x.response); else fail(url + ' (' + x.status + ')'); };
+  x.onerror = function () { fail(url); };
+  x.send();
+}
+
+// File layout is described in tools/quantize.py. t.b is the byte offset of the int8 values,
+// t.s the float index of their scales (one per GS values).
+function parseModel(buf) {
+  var h = new Int32Array(buf, 0, 7);
+  var p = { dim: h[0], hid: h[1], nl: h[2], nh: h[3], nkv: h[4], vocab: Math.abs(h[5]), seq: h[6] };
+  p.hs = p.dim / p.nh;
+  p.kvd = p.dim * p.nkv / p.nh;
+  p.kvmul = p.nh / p.nkv;
+  var off = 28;
+  function f32(n) { var a = new Float32Array(buf, off, n); off += n * 4; return a; }
+  function q8(n) { var t = { b: off, s: (off + n) >> 2 }; off += n + (n >> 3); return t; }
+  var w = {};
+  w.rmsAtt = f32(p.nl * p.dim);
+  w.rmsFfn = f32(p.nl * p.dim);
+  w.rmsFinal = f32(p.dim);
+  w.emb = q8(p.vocab * p.dim);
+  w.wq = q8(p.nl * p.dim * p.dim);
+  w.wk = q8(p.nl * p.dim * p.kvd);
+  w.wv = q8(p.nl * p.dim * p.kvd);
+  w.wo = q8(p.nl * p.dim * p.dim);
+  w.w1 = q8(p.nl * p.hid * p.dim);
+  w.w2 = q8(p.nl * p.dim * p.hid);
+  w.w3 = q8(p.nl * p.hid * p.dim);
+  p.K = new Int32Array(buf, off, 1)[0]; off += 4;
+  w.keep = new Int32Array(buf, off, p.K); off += p.K * 4; // token ids the output layer scores
+  w.cls = q8(p.K * p.dim);
+  B = new Int8Array(buf); B4 = new Int32Array(buf); S = new Float32Array(buf); // B4: same weights, four per load (every tensor starts 4-byte aligned)
+  M = p; W = w;
+}
+
+// Pieces are kept as latin1 strings (one char per byte) so UTF-8 bytes stay intact.
+function parseTok(buf, vocab) {
+  var dv = new DataView(buf), u8 = new Uint8Array(buf), off = 4; // first int = max token length
+  tok = { s: [], sc: new Float32Array(vocab), map: Object.create(null) };
+  for (var i = 0; i < vocab; i++) {
+    tok.sc[i] = dv.getFloat32(off, true);
+    var len = dv.getInt32(off + 4, true);
+    off += 8;
+    var s = '';
+    for (var j = 0; j < len; j++) s += String.fromCharCode(u8[off + j]);
+    off += len;
+    tok.s.push(s);
+    tok.map[s] = i;
+  }
+}
+
+function encode(text, bos) {
+  var s = unescape(encodeURIComponent(text)), ids = bos ? [1] : [], buf = '', i, k;
+  if (s.length) ids.push(tok.map[' ']);
+  for (i = 0; i < s.length; i++) {
+    if ((s.charCodeAt(i) & 0xC0) !== 0x80) buf = '';
+    buf += s.charAt(i);
+    if ((s.charCodeAt(i + 1) & 0xC0) === 0x80 && buf.length < 4) continue;
+    var id = tok.map[buf];
+    if (id !== undefined) ids.push(id);
+    else for (k = 0; k < buf.length; k++) ids.push(buf.charCodeAt(k) + 3);
+    buf = '';
+  }
+  for (;;) {
+    var best = -1e10, bi = -1, bid = -1;
+    for (i = 0; i < ids.length - 1; i++) {
+      var m = tok.map[tok.s[ids[i]] + tok.s[ids[i + 1]]];
+      if (m !== undefined && tok.sc[m] > best) { best = tok.sc[m]; bi = i; bid = m; }
+    }
+    if (bi < 0) break;
+    ids.splice(bi, 2, bid);
+  }
+  return ids;
+}
+
+function piece(prev, t) {
+  var s = tok.s[t];
+  if (prev === 1 && s.charAt(0) === ' ') s = s.slice(1);
+  var m = /^<0x([0-9A-F]{2})>$/.exec(s);
+  return m ? String.fromCharCode(parseInt(m[1], 16)) : s;
+}
+
+function rmsnorm(o, x, w, wo, n) {
+  var ss = 0, j;
+  for (j = 0; j < n; j++) ss += x[j] * x[j];
+  ss = 1 / Math.sqrt(ss / n + 1e-5);
+  for (j = 0; j < n; j++) o[j] = w[wo + j] * (ss * x[j]);
+}
+
+function softmax(a, off, n) {
+  var mx = a[off], sum = 0, i;
+  for (i = 1; i < n; i++) if (a[off + i] > mx) mx = a[off + i];
+  for (i = 0; i < n; i++) { a[off + i] = Math.exp(a[off + i] - mx); sum += a[off + i]; }
+  for (i = 0; i < n; i++) a[off + i] /= sum;
+}
+
+// Rows r0..r1 of o[oo+i] = sum_j w[wb + i*n + j] * x[xo + j] with int8 weights w and one float scale
+// per 32 weights in s (from sb). Everything is an index into whole-buffer views so a worker can run it.
+// n must be a multiple of 32. Eight accumulators per group keep the multiplies independent.
+function mmQ(o, oo, x, xo, w, wb, s, sb, n, r0, r1) {
+  var ng = n >> 5;
+  for (var i = r0; i < r1; i++) {
+    var p = wb + i * n, q = sb + i * ng, xp = xo, acc = 0;
+    for (var g = 0; g < ng; g++) {
+      var s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0, s7 = 0;
+      for (var e = p + 32; p < e; p += 8, xp += 8) {
+        s0 += w[p] * x[xp];
+        s1 += w[p + 1] * x[xp + 1];
+        s2 += w[p + 2] * x[xp + 2];
+        s3 += w[p + 3] * x[xp + 3];
+        s4 += w[p + 4] * x[xp + 4];
+        s5 += w[p + 5] * x[xp + 5];
+        s6 += w[p + 6] * x[xp + 6];
+        s7 += w[p + 7] * x[xp + 7];
+      }
+      acc += (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7) * s[q + g];
+    }
+    o[oo + i] = acc;
+  }
+}
+
+// Same as mmQ but the input is int8 too (xq with one scale per 32 in xs), so the inner loop is integer multiply-adds.
+function mmI(o, oo, xq, xs, w, wb, s, sb, n, r0, r1) {
+  var ng = n >> 5;
+  for (var i = r0; i < r1; i++) {
+    var p = wb + i * n, q = sb + i * ng, xp = 0, acc = 0;
+    for (var g = 0; g < ng; g++) {
+      var s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0, s7 = 0;
+      for (var e = p + 32; p < e; p += 8, xp += 8) {
+        s0 += w[p] * xq[xp];
+        s1 += w[p + 1] * xq[xp + 1];
+        s2 += w[p + 2] * xq[xp + 2];
+        s3 += w[p + 3] * xq[xp + 3];
+        s4 += w[p + 4] * xq[xp + 4];
+        s5 += w[p + 5] * xq[xp + 5];
+        s6 += w[p + 6] * xq[xp + 6];
+        s7 += w[p + 7] * xq[xp + 7];
+      }
+      acc += (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7) * s[q + g] * xs[g];
+    }
+    o[oo + i] = acc;
+  }
+}
+
+// Same as mmI but four int8 values per load: w4/x4 are Int32Array views (wb is still a byte offset), each byte is split
+// out with shifts. Fewer typed-array reads and bounds checks per multiply-add.
+function mmP(o, oo, x4, xs, w4, wb, s, sb, n, r0, r1) {
+  var ng = n >> 5;
+  for (var i = r0; i < r1; i++) {
+    var p = (wb + i * n) >> 2, q = sb + i * ng, xp = 0, acc = 0;
+    for (var g = 0; g < ng; g++) {
+      var s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0, s7 = 0;
+      for (var e = p + 8; p < e; p += 2, xp += 2) {
+        var a = w4[p], b = x4[xp], c = w4[p + 1], d = x4[xp + 1];
+        s0 += ((a << 24) >> 24) * ((b << 24) >> 24);
+        s1 += ((a << 16) >> 24) * ((b << 16) >> 24);
+        s2 += ((a << 8) >> 24) * ((b << 8) >> 24);
+        s3 += (a >> 24) * (b >> 24);
+        s4 += ((c << 24) >> 24) * ((d << 24) >> 24);
+        s5 += ((c << 16) >> 24) * ((d << 16) >> 24);
+        s6 += ((c << 8) >> 24) * ((d << 8) >> 24);
+        s7 += (c >> 24) * (d >> 24);
+      }
+      acc += (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7) * s[q + g] * xs[g];
+    }
+    o[oo + i] = acc;
+  }
+}
+
+// Attention for heads h0..h1; all vectors are indices into G, parameters come from ctrl[48..57].
+function attn(G, c, h0, h1) {
+  var qO = c[48], xO = c[49], aO = c[50], kO = c[51], vO = c[52], pos = c[53], hs = c[54], seq = c[55], kvd = c[56], kvmul = c[57];
+  for (var h = h0; h < h1; h++) {
+    var qo = qO + h * hs, ao = aO + h * seq, ko = Math.floor(h / kvmul) * hs, xo = xO + h * hs, t, j;
+    for (t = 0; t <= pos; t++) {
+      var sc = 0, kb = kO + t * kvd + ko;
+      for (j = 0; j < hs; j++) sc += G[qo + j] * G[kb + j];
+      G[ao + t] = sc / Math.sqrt(hs);
+    }
+    softmax(G, ao, pos + 1);
+    for (j = 0; j < hs; j++) G[xo + j] = 0;
+    for (t = 0; t <= pos; t++) {
+      var at = G[ao + t], vb = vO + t * kvd + ko;
+      for (j = 0; j < hs; j++) G[xo + j] += at * G[vb + j];
+    }
+  }
+}
+
+// Second thread. ctrl: [0] go, [1] done, [2] job count, [3] kind (0 matmul jobs, 1 attention), [4..5] head range,
+// jobs of 8 ints from [16], [8] kernel (0 float activations, 1 int8, 2 int8 with packed loads), attention parameters from [48].
+function workerMain() {
+  var B, B4, S, G, c, XQ, XQ4, XS;
+  onmessage = function (e) {
+    B = new Int8Array(e.data.model); B4 = new Int32Array(e.data.model); S = new Float32Array(e.data.model);
+    G = new Float32Array(e.data.state); c = new Int32Array(e.data.ctrl);
+    XQ = new Int8Array(e.data.q, 0, 1024); XQ4 = new Int32Array(e.data.q, 0, 256); XS = new Float32Array(e.data.q, 1024, 256);
+    postMessage('ready');
+    for (;;) {
+      var spins = 0;
+      while (Atomics.load(c, 0) !== 1) {
+        if (++spins > 20000) { Atomics.wait(c, 0, 0, 50); spins = 0; }
+      }
+      if (c[3] === 1) attn(G, c, c[4], c[5]);
+      else for (var k = 0; k < c[2]; k++) {
+        var j = 16 + k * 8;
+        if (c[8] === 2) mmP(G, c[j], XQ4, XS, B4, c[j + 2], S, c[j + 3], c[j + 4], c[j + 5], c[j + 6]);
+        else if (c[8]) mmI(G, c[j], XQ, XS, B, c[j + 2], S, c[j + 3], c[j + 4], c[j + 5], c[j + 6]);
+        else mmQ(G, c[j], G, c[j + 1], B, c[j + 2], S, c[j + 3], c[j + 4], c[j + 5], c[j + 6]);
+      }
+      Atomics.store(c, 0, 0);
+      Atomics.store(c, 1, 1);
+    }
+  };
+}
+
+function fire(kind) {
+  ctrl[3] = kind;
+  Atomics.store(ctrl, 1, 0);
+  Atomics.store(ctrl, 0, 1);
+  wake(ctrl, 0, 1);
+}
+
+function join() {
+  for (var spins = 0; Atomics.load(ctrl, 1) !== 1; spins++) {
+    if (spins > 3e7) { par = false; return false; } // worker looks dead: the caller does its share, then stays single-threaded
+  }
+  return true;
+}
+
+// Matmuls that read the same input are queued with mq() and run together by go(): one thread sync for all of them.
+function mq(o, x, t, wo, n, d) {
+  var ob = o.byteOffset >> 2, xb = x.byteOffset >> 2, wb = t.b + wo, sb = t.s + (wo >> 5);
+  if (useInt && !nj) quant(xb, n); // every matmul in a batch shares one input
+  if (!par) { var t = hr(); run(ob, xb, wb, sb, n, 0, d); T.mm += hr() - t; return; }
+  var k = 16 + nj++ * 8;
+  ctrl[k] = ob; ctrl[k + 1] = xb; ctrl[k + 2] = wb; ctrl[k + 3] = sb; ctrl[k + 4] = n; ctrl[k + 5] = d >> 1; ctrl[k + 6] = d;
+}
+
+function run(ob, xb, wb, sb, n, r0, r1) {
+  if (kmode === 2) mmP(G, ob, XQ4, XS, B4, wb, S, sb, n, r0, r1);
+  else if (kmode) mmI(G, ob, XQ, XS, B, wb, S, sb, n, r0, r1);
+  else mmQ(G, ob, G, xb, B, wb, S, sb, n, r0, r1);
+}
+
+// Symmetric int8 quantisation of G[xb..xb+n) with one scale per 32 values.
+function quant(xb, n) {
+  for (var g = 0; g < n >> 5; g++) {
+    var b = xb + g * 32, mx = 0, j, a;
+    for (j = 0; j < 32; j++) { a = G[b + j]; if (a < 0) a = -a; if (a > mx) mx = a; }
+    var sc = mx > 0 ? mx / 127 : 1, inv = 1 / sc;
+    XS[g] = sc;
+    for (j = 0; j < 32; j++) XQ[g * 32 + j] = Math.round(G[b + j] * inv);
+  }
+}
+
+function runJobs(second) {
+  for (var k = 0; k < ctrl[2]; k++) {
+    var j = 16 + k * 8;
+    run(ctrl[j], ctrl[j + 1], ctrl[j + 2], ctrl[j + 3], ctrl[j + 4], second ? ctrl[j + 5] : 0, second ? ctrl[j + 6] : ctrl[j + 5]);
+  }
+}
+
+function go() {
+  if (!nj) return;
+  ctrl[2] = nj;
+  var t0 = hr();
+  fire(0);
+  runJobs(false);
+  var t1 = hr();
+  if (!join()) runJobs(true);
+  var t2 = hr();
+  T.mm += t2 - t0; T.wait += t2 - t1; // wait: time the main thread sat idle for the worker
+  nj = 0;
+}
+
+function attention(l, pos) {
+  var p = M, loff = l * p.seq * p.kvd, nh = p.nh;
+  ctrl[48] = V.q.byteOffset >> 2; ctrl[49] = V.xb.byteOffset >> 2; ctrl[50] = V.att.byteOffset >> 2;
+  ctrl[51] = (V.kc.byteOffset >> 2) + loff; ctrl[52] = (V.vc.byteOffset >> 2) + loff;
+  ctrl[53] = pos; ctrl[54] = p.hs; ctrl[55] = p.seq; ctrl[56] = p.kvd; ctrl[57] = p.kvmul;
+  if (!par || pos < 48) return attn(G, ctrl, 0, nh); // for short contexts the sync costs more than it saves
+  ctrl[4] = nh >> 1; ctrl[5] = nh;
+  fire(1);
+  attn(G, ctrl, 0, nh >> 1);
+  if (!join()) attn(G, ctrl, nh >> 1, nh);
+}
+
+// Every vector the threads touch lives in one buffer (shared when threading is available).
+function initVecs(shared) {
+  var p = M, sizes = { x: p.dim, xb: p.dim, xb2: p.dim, hb: p.hid, hb2: p.hid, q: p.dim, k: p.kvd, v: p.kvd,
+    logits: p.K, att: p.nh * p.seq, kc: p.nl * p.seq * p.kvd, vc: p.nl * p.seq * p.kvd };
+  var total = 0, off = 0, key;
+  for (key in sizes) total += sizes[key];
+  V = { buf: shared ? new SharedArrayBuffer(total * 4) : new ArrayBuffer(total * 4) };
+  for (key in sizes) { V[key] = new Float32Array(V.buf, off * 4, sizes[key]); off += sizes[key]; }
+  V.cs = new Float32Array(p.dim / 2); V.sn = new Float32Array(p.dim / 2);
+  G = new Float32Array(V.buf);
+  ctrl = new Int32Array(shared ? new SharedArrayBuffer(256) : new ArrayBuffer(256));
+  ctrl[8] = kmode;
+  Q = shared ? new SharedArrayBuffer(2048) : new ArrayBuffer(2048); // quantised matmul input; shortcut: inputs up to 1024 values
+  XQ = new Int8Array(Q, 0, 1024); XQ4 = new Int32Array(Q, 0, 256); XS = new Float32Array(Q, 1024, 256);
+}
+
+function forward(token, pos) {
+  var s = V, p = M, w = W, dim = p.dim, hid = p.hid, hs = p.hs, kvd = p.kvd, i, l, ta, tf = hr();
+  var eb = w.emb.b + token * dim, es = w.emb.s + ((token * dim) >> 5);
+  for (i = 0; i < dim; i++) s.x[i] = B[eb + i] * S[es + (i >> 5)];
+  for (i = 0; i < dim; i += 2) {
+    var a = pos / Math.pow(10000, (i % hs) / hs);
+    s.cs[i / 2] = Math.cos(a); s.sn[i / 2] = Math.sin(a);
+  }
+  for (l = 0; l < p.nl; l++) {
+    rmsnorm(s.xb, s.x, w.rmsAtt, l * dim, dim);
+    mq(s.q, s.xb, w.wq, l * dim * dim, dim, dim);
+    mq(s.k, s.xb, w.wk, l * dim * kvd, dim, kvd);
+    mq(s.v, s.xb, w.wv, l * dim * kvd, dim, kvd);
+    go();
+    for (i = 0; i < dim; i += 2) {
+      var c = s.cs[i / 2], sn = s.sn[i / 2], v0 = s.q[i], v1 = s.q[i + 1];
+      s.q[i] = v0 * c - v1 * sn; s.q[i + 1] = v0 * sn + v1 * c;
+      if (i < kvd) {
+        v0 = s.k[i]; v1 = s.k[i + 1];
+        s.k[i] = v0 * c - v1 * sn; s.k[i + 1] = v0 * sn + v1 * c;
+      }
+    }
+    var loff = l * p.seq * kvd;
+    s.kc.set(s.k, loff + pos * kvd);
+    s.vc.set(s.v, loff + pos * kvd);
+    ta = hr();
+    attention(l, pos);
+    T.att += hr() - ta;
+    mq(s.xb2, s.xb, w.wo, l * dim * dim, dim, dim);
+    go();
+    for (i = 0; i < dim; i++) s.x[i] += s.xb2[i];
+    rmsnorm(s.xb, s.x, w.rmsFfn, l * dim, dim);
+    mq(s.hb, s.xb, w.w1, l * dim * hid, dim, hid);
+    mq(s.hb2, s.xb, w.w3, l * dim * hid, dim, hid);
+    go();
+    for (i = 0; i < hid; i++) { var u = s.hb[i]; s.hb[i] = u / (1 + Math.exp(-u)) * s.hb2[i]; }
+    mq(s.xb2, s.hb, w.w2, l * dim * hid, hid, dim);
+    go();
+    for (i = 0; i < dim; i++) s.x[i] += s.xb2[i];
+  }
+  rmsnorm(s.x, s.x, w.rmsFinal, 0, dim);
+  mq(s.logits, s.x, w.cls, 0, dim, p.K); // only the K tokens the model really uses
+  go();
+  T.tot += hr() - tf; T.n++;
+}
+
+function sample(l, temp, topp) {
+  var n = l.length, i;
+  if (temp <= 0) {
+    var m = 0;
+    for (i = 1; i < n; i++) if (l[i] > l[m]) m = i;
+    return m;
+  }
+  for (i = 0; i < n; i++) l[i] /= temp;
+  softmax(l, 0, n);
+  var cut = (1 - topp) / (n - 1), cand = [];
+  for (i = 0; i < n; i++) if (l[i] >= cut) cand.push(i);
+  cand.sort(function (a, b) { return l[b] - l[a]; });
+  var cum = 0, last = cand.length - 1;
+  for (i = 0; i < cand.length; i++) {
+    cum += l[cand[i]];
+    if (cum > topp) { last = i; break; }
+  }
+  var r = Math.random() * cum, c = 0;
+  for (i = 0; i <= last; i++) { c += l[cand[i]]; if (r < c) return cand[i]; }
+  return cand[last];
+}
+
+/* ---------- chat UI ---------- */
+var inp = $('inp'), sendBtn = $('send'), msgs = $('msgs'), scroller = $('scroll');
+var ICON_SEND = '<svg viewBox="0 0 18 18"><path d="M9 14V4M4.5 8.5L9 4l4.5 4.5"/></svg>';
+var ICON_STOP = '<svg viewBox="0 0 18 18"><rect x="4.5" y="4.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>';
+var I_SPEED = '<svg viewBox="0 0 12 12"><path d="M2 9a4.5 4.5 0 1 1 8 0M6 7l2-2"/></svg>';
+var I_TOK = '<svg viewBox="0 0 12 12"><path d="M2 4h8M2 8h8M4.5 2L4 10M8 2l-.5 8"/></svg>';
+var I_TIME = '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5"/><path d="M6 3.5V6l1.5 1"/></svg>';
+
+var pos = 0, pending = 0, busy = false, stopFlag = false, title = '';
+
+function dec(raw) {
+  try { return decodeURIComponent(escape(raw)); } catch (e) { return raw; }
+}
+
+function setBusy(b) {
+  busy = b;
+  sendBtn.innerHTML = b ? ICON_STOP : ICON_SEND;
+  sendBtn.disabled = !b && !inp.value;
+}
+
+function ctxUpdate() {
+  var pct = Math.round(100 * pos / M.seq);
+  $('pct').textContent = pct + '%';
+  $('ring').setAttribute('stroke-dasharray', (pct * 0.628) + ' 62.8');
+  $('ctok').textContent = pos + ' tokens';
+}
+
+function chip(icon, text) { return '<span class="chip">' + icon + text + '</span>'; }
+
+function atBottom() { return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 60; }
+
+function addUser(text) {
+  var d = document.createElement('div'); d.className = 'user';
+  var b = document.createElement('div'); b.textContent = text; d.appendChild(b);
+  msgs.appendChild(d);
+}
+
+function addAsst() {
+  var d = document.createElement('div'); d.className = 'asst';
+  d.innerHTML = '<div class="mname">stories15M</div><div class="body"></div><div class="stats"></div>';
+  msgs.appendChild(d);
+  return { body: d.children[1], stats: d.children[2] };
+}
+
+// The model continues text rather than answering, so offer openings it handles well.
+var STARTS = ['Once upon a time', 'One day, a little dog named Max', 'Lily and her mom went to the park', 'Tom had a big red ball. He'];
+function showStarts(on) { $('empty').style.display = on ? '' : 'none'; $('starts').style.display = on ? '' : 'none'; }
+function fillStarts() {
+  var box = $('starts');
+  box.innerHTML = '';
+  STARTS.forEach(function (t) {
+    var b = document.createElement('button'); b.className = 'st'; b.textContent = t;
+    b.onclick = function () { if (busy) return; inp.value = t; send(); };
+    box.appendChild(b);
+  });
+}
+
+function send() {
+  if (busy) { stopFlag = true; return; }
+  var text = inp.value.replace(/^\s+|\s+$/g, '');
+  if (!text || !M) return;
+  var first = pos === 0, sys = $('sys').value.replace(/^\s+|\s+$/g, '');
+  var ids = encode(first && sys ? sys + ' ' + text : text, first);
+  var q = (pending ? [pending] : []).concat(ids);
+  showStarts(false);
+  addUser(text);
+  inp.value = ''; inp.style.height = '24px';
+  if (!title) { title = text.length > 24 ? text.slice(0, 24) + '…' : text; $('ctitle').textContent = title; }
+  if (pos + q.length >= M.seq - 1) {
+    addAsst().body.textContent = 'The context is full. Start a new chat to keep going.';
+    return setBusy(false);
+  }
+  generate(q);
+}
+
+function generate(q) {
+  var temp = parseFloat($('tr').value), topp = parseFloat($('pr').value), maxTok = parseInt($('mr').value, 10);
+  var m = addAsst(), raw = '', gen = 0, qi = 1, tokenIn = q[0], tSend = Date.now(), tFirst = 0, lastUi = 0;
+  setBusy(true); stopFlag = false;
+  T.tot = T.mm = T.wait = T.att = T.n = 0;
+  function ui(reason) {
+    var now = Date.now();
+    if (!reason && now - lastUi < 150) return;
+    lastUi = now;
+    var follow = atBottom(), html = '';
+    m.body.textContent = dec(raw);
+    if (gen > 1) html += chip(I_SPEED, ((gen - 1) / ((now - tFirst) / 1000)).toFixed(2) + ' tok/sec');
+    if (gen) html += chip(I_TOK, gen + ' tokens') + chip(I_TIME, ((tFirst - tSend) / 1000).toFixed(2) + 's');
+    if (reason) html += chip('', 'Stop reason: ' + reason);
+    m.stats.innerHTML = html;
+    if (T.n) { // per token, ms
+      var f = function (v) { return (v / T.n).toFixed(1); };
+      $('pf').textContent = 'Last reply, ms per token: ' + f(T.tot) + ' in forward = matmul ' + f(T.mm) + ' (idle waiting for thread 2: ' + f(T.wait) +
+        ') + attention ' + f(T.att) + ' + other ' + f(T.tot - T.mm - T.att);
+    }
+    ctxUpdate();
+    if (follow) scroller.scrollTop = scroller.scrollHeight;
+  }
+  function finish(reason) {
+    if (reason === 'EOS Token Found') pending = 1; else pending = tokenIn; // the next token was chosen but not fed yet
+    setBusy(false);
+    ui(reason);
+  }
+  function step() {
+    var t0 = Date.now();
+    do { // several tokens per tick: setTimeout alone adds ~4 ms per token
+      if (stopFlag) return finish('User Stopped');
+      if (pos >= M.seq - 1) return finish('Context Length Reached');
+      forward(tokenIn, pos); pos++;
+      var next;
+      if (qi < q.length) next = q[qi++]; // still reading the prompt
+      else {
+        next = W.keep[sample(V.logits, temp, topp)];
+        if (!gen) tFirst = Date.now();
+        gen++;
+        if (next === 1) return finish('EOS Token Found');
+        raw += piece(tokenIn, next);
+        if (gen >= maxTok) { tokenIn = next; return finish('Max Predicted Tokens Reached'); }
+      }
+      tokenIn = next;
+    } while (Date.now() - t0 < 30);
+    ui();
+    setTimeout(step, 0);
+  }
+  step();
+}
+
+function newChat() {
+  if (busy) stopFlag = true;
+  pos = 0; pending = 0; title = '';
+  msgs.innerHTML = '';
+  showStarts(true);
+  $('ctitle').textContent = 'Unnamed Chat';
+  if (M) ctxUpdate();
+  closeDrawers();
+}
+
+function openDrawer(id) { $(id).className += ' open'; $('veil').style.display = 'block'; }
+function closeDrawers() {
+  $('left').className = 'drawer'; $('right').className = 'drawer'; $('veil').style.display = 'none';
+}
+
+$('menu').onclick = function () { openDrawer('left'); };
+$('cfg').onclick = function () { openDrawer('right'); };
+$('veil').onclick = closeDrawers;
+$('new').onclick = newChat;
+sendBtn.onclick = send;
+inp.oninput = function () {
+  inp.style.height = '24px';
+  inp.style.height = Math.min(inp.scrollHeight, 120) + 'px';
+  if (!busy) sendBtn.disabled = !inp.value;
+};
+inp.onkeydown = function (e) { if (e.keyCode === 13 && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } };
+[['tr', 'tv'], ['pr', 'pv'], ['mr', 'mv']].forEach(function (p) {
+  $(p[0]).oninput = function () { $(p[1]).textContent = $(p[0]).value; };
+});
+sendBtn.innerHTML = ICON_SEND;
+
+/* ---------- start-up ---------- */
+// Flags go in the hash (e.g. /#single, /#int) so they don't make a second offline-cache entry.
+var flags = location.search + location.hash;
+var single = /[?&#]single/.test(flags);
+var kmode = /[?&#]pk/.test(flags) ? 2 : /[?&#]int/.test(flags) ? 1 : 0, useInt = kmode > 0; // #int int8 activations, #pk the same with packed loads
+var canShare = !single && typeof SharedArrayBuffer !== 'undefined' && typeof Atomics !== 'undefined' && typeof Worker !== 'undefined';
+var mode = single ? '1 thread (forced)' : '1 thread (no shared memory)';
+
+function ready() {
+  $('pt').textContent = 'stories15M';
+  $('pill').className = 'on';
+  $('empty').textContent = 'stories15M loaded. Type the start of a story, or tap one:';
+  if (!$('starts').firstChild) fillStarts();
+  $('rt').textContent = 'int8 weights' + (useInt ? ' and activations' : '') + (kmode === 2 ? ' (packed loads)' : '') + ', ' + mode + ', output layer ' + M.K + '/' + M.vocab + ' tokens, context ' + M.seq;
+}
+
+function startWorker(modelBuf) {
+  try {
+    wake = Atomics.notify || Atomics.wake; // older Safari only has the old name
+    var src = [mmQ, mmI, mmP, softmax, attn].map(function (f) { return f.toString(); }).join('\n') + '\n(' + workerMain.toString() + ')();';
+    var wk = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    wk.onmessage = function () { par = true; mode = '2 threads'; ready(); };
+    wk.onerror = function () { par = false; mode = '1 thread (worker failed)'; ready(); };
+    wk.postMessage({ model: modelBuf, state: V.buf, ctrl: ctrl.buffer, q: Q });
+  } catch (e) {
+    mode = '1 thread (no worker)';
+  }
+}
+
+function fail(what) {
+  $('pt').textContent = 'Failed to load';
+  $('empty').textContent = 'Could not load ' + what;
+}
+
+// Offline copy (app.appcache): when a newer one finishes downloading, restart on it unless a reply is being written.
+if (window.applicationCache) {
+  var ac = applicationCache;
+  var oc = function (t) { $('oc').textContent = 'Offline copy: ' + t; };
+  var ocMsg = { checking: 'checking…', downloading: 'downloading…', noupdate: 'ready, works offline', cached: 'ready, works offline',
+    updateready: 'new version downloaded', obsolete: 'not cached (manifest gone)', error: 'failed (server unreachable or storage full)' };
+  for (var ev in ocMsg) (function (ev) { ac.addEventListener(ev, function () { oc(ocMsg[ev]); }); })(ev);
+  ac.addEventListener('progress', function (e) { oc('downloading file ' + (e.loaded || 0) + ' of ' + (e.total || '?') + '…'); });
+  ac.addEventListener('updateready', function () { if (!busy) location.reload(); });
+  if (ac.status === 1) oc(ocMsg.cached); // already cached on an earlier visit; no event fires
+}
+
+load('/models/stories15M.q8', function (mb) {
+  var buf = mb;
+  if (canShare) {
+    buf = new SharedArrayBuffer(mb.byteLength);
+    new Uint8Array(buf).set(new Uint8Array(mb));
+  }
+  parseModel(buf);
+  initVecs(canShare);
+  load('/models/tokenizer.bin', function (tb) {
+    parseTok(tb, M.vocab);
+    if (canShare) startWorker(buf);
+    ready();
+    ctxUpdate();
+  }, fail);
+}, fail);
+</script>
+</body></html>
