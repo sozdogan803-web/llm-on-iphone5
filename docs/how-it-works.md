@@ -26,7 +26,7 @@ A 15-million-parameter language model (stories15M, Karpathy's llama2.c architect
 | Second thread (Web Worker + SharedArrayBuffer, fused dispatch) | 6.7 |
 | int8 weights, float activations | 6.6 (no gain; the phone is compute-bound) |
 | **Vocabulary pruning** (output layer 32000 -> 3926 tokens) | **11.7** |
-| Packed int32 loads (`#pk`) | built and verified on PC, **not yet measured on the phone** |
+| Packed int32 loads (`#pk`) | **11.4: no gain** (default page peaks at about 12); ~24% faster on a PC |
 
 The three steps that mattered, in order of payoff, are below.
 
@@ -46,7 +46,7 @@ Many browsers dropped SharedArrayBuffer after Spectre and only expose it to cros
 
 `tools/quantize.py` converts the float32 checkpoint to int8 with one float32 scale per 32 weights (group size 32), max abs rounding error about one quantisation step. Activations are quantised the same way on the fly, so the inner loop becomes integer multiply-adds, with one float multiply per 32-wide group.
 
-Plain int8 was *not* faster on the phone, because the cost is in the loop, not the bytes. The packed kernel (`mmP`) reads **four int8 weights per Int32Array load** and splits them with shifts (`(a<<24)>>24`, `(a<<16)>>24`, `(a<<8)>>24`, `a>>24`). That removes three quarters of the typed-array reads and bounds checks per multiply-add. It is bit-identical to the plain int kernel, and on a PC it was about 35% faster than int8 and 24% faster than float at the same thread count. Whether the A6 sees the same gain is the open question.
+Plain int8 was *not* faster on the phone, because the cost is in the loop, not the bytes. The packed kernel (`mmP`) reads **four int8 weights per Int32Array load** and splits them with shifts (`(a<<24)>>24`, `(a<<16)>>24`, `(a<<8)>>24`, `a>>24`). That removes three quarters of the typed-array reads and bounds checks per multiply-add. It is bit-identical to the plain int kernel, and on a PC it was about 35% faster than int8 and 24% faster than float at the same thread count. On the iPhone 5 it gave no gain (11.4 tok/s against a default-page peak of about 12, within run-to-run noise), so the default page is still the one to use. My guess, untested, is that the A6's JIT pays about as much for the shifts as it saves on array reads.
 
 ## Smaller pieces
 
@@ -67,7 +67,6 @@ Honest answer: I do not know, and I have not searched. Each ingredient is establ
 
 ## Still unverified
 
-- `#pk` speed on the phone.
 - Offline caching and storage quota behaviour on iOS 10.
 - How Safari renders the starter buttons and the drawer.
 - Quality loss from int8 and pruning has only been checked by reading outputs (coherent stories), not by a perplexity measurement.

@@ -11,7 +11,7 @@ What got it there, briefly: two threads (Web Worker on a SharedArrayBuffer), int
 | Claim | State |
 |---|---|
 | 11.7 tok/s on the phone | measured by me, on a build **before** the packed-load kernel |
-| Packed-load kernel (`#pk`) | exact (bit-identical logits to `#int`) and ~24% faster than float on a PC; **not yet measured on the phone** |
+| Packed-load kernel (`#pk`) | exact (bit-identical logits to `#int`) and ~24% faster than float on a PC, but **no gain on the iPhone 5**: 11.4 tok/s against a default-page peak of about 12 (within run-to-run noise). Use the default page. |
 | Works offline (Application Cache) | implemented; **not tested on iOS 10** |
 | Quality after int8 + output-layer pruning | read outputs, they are coherent stories; **no perplexity measurement** |
 
@@ -29,7 +29,7 @@ It prints your LAN addresses. Open `http://<that address>:8000` on the phone. Pa
 |---|---|
 | `/` | float activations (default) |
 | `/#int` | int8 activations |
-| `/#pk` | int8 activations, 4 weights per load (fastest on PC) |
+| `/#pk` | int8 activations, 4 weights per load (fastest on a PC, no gain on the iPhone 5) |
 | `/#single` | one thread only (combine with the others, e.g. `/#single&pk`) |
 | `/f32.html` | float32 baseline (needs `models/stories15M.bin`, see below) |
 
